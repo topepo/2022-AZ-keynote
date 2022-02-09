@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>tidymodels and recipes</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Max Kuhn" />
+    <script src="libs/header-attrs-2.11/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="css/fonts.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+
+
+
+class: title-slide, middle
+background-position: 85% 50%
+background-size: 30%
+background-color: #F9F8F3
+
+# tidymodels and recipes
+
+### Max Kuhn
+
+
+
+
+
+---
+# tidymodels
+
+&gt; The tidymodels framework is a collection of packages for modeling and machine learning using tidyverse principles. 
+
+Our goals:
+
+ * Enable users to fall into the "pit of success".
+ * Provide a pleasant and rational interface to many types of models.
+ * Provide guardrails, sometimes invisibly, that can prevent methodology errors.
+
+---
+layout: false
+class: inverse, middle, center
+
+
+
+# [`tidymodels.org`](https://www.tidymodels.org/)
+
+# _Tidy Modeling with R_ ([`tmwr.org`](https://www.tmwr.org/))
+
+---
+class: middle
+background-image: url(images/hex_wall.png)
+background-size: 90%
+
+
+---
+
+# An example - thyroid disorder
+
+A very old data of 3,772 data points for binary classification to predict people who are sick from thyroid disease. 
+
+* Mostly binary predictors
+* Class imbalance of about 6%
+* Significant amounts of missing data
+
+We will hold back 25% of the data for testing model performance. 
+
+
+---
+# Getting started
+
+.code80[
+
+
+```r
+library(tidymodels)
+```
+
+
+```
+## ── Attaching packages ────────────────────────────────────── tidymodels 0.1.4 ──
+```
+
+```
+## ✓ broom        0.7.11     ✓ recipes      0.1.17
+## ✓ dials        0.1.0      ✓ rsample      0.1.1 
+## ✓ dplyr        1.0.8      ✓ tibble       3.1.6 
+## ✓ ggplot2      3.3.5      ✓ tidyr        1.2.0 
+## ✓ infer        1.0.0      ✓ tune         0.1.6 
+## ✓ modeldata    0.1.1      ✓ workflows    0.2.4 
+## ✓ parsnip      0.1.7      ✓ workflowsets 0.1.0 
+## ✓ purrr        0.3.4      ✓ yardstick    0.0.9
+```
+
+```
+## ── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+## x purrr::accumulate() masks foreach::accumulate()
+## x purrr::discard()    masks scales::discard()
+## x dplyr::filter()     masks stats::filter()
+## x dplyr::lag()        masks stats::lag()
+## x recipes::step()     masks stats::step()
+## x purrr::when()       masks foreach::when()
+## • Search for functions across packages at https://www.tidymodels.org/find/
+```
+
+```r
+library(themis)     # &lt;- for class imbalance sampling
+```
+
+
+]
+
+
+
+---
+# Getting started
+
+
+```r
+tidymodels_prefer()
+theme_set(theme_bw())
+
+# training/test split
+set.seed(1)
+thy_split &lt;- initial_split(thyroid_disease, strata = class)
+thy_train &lt;- training(thy_split)
+thy_test  &lt;- testing(thy_split)
+
+# 10-fold cross-validation scheme
+thy_folds &lt;- vfold_cv(thy_train, strata = class)
+
+# Columns with missing values
+miss_cols &lt;- c("T4_reading", "TSH_reading", "FTI_reading", "thyrox_util_rate_T4U_reading")
+```
+
+
+---
+# Missing value patterns
+
+&lt;img src="index_files/figure-html/missing-1.svg" style="display: block; margin: auto;" /&gt;
+
+---
+# A data recipe 
+
+Recipes is a package that can prepare data for modeling. 
+
+* Think of it as a mash-up of `model.matrix()` and `dplyr`.
+* It is well integrated with the rest of tidymodels. 
+* See TMwR Chapters [8](https://www.tmwr.org/recipes.html) and [16](https://www.tmwr.org/dimensionality.html)
+
+We'll use this to deal with some of the important aspects of these data. 
+
+Recipes are also a _great_ tool for feature engineering (but we won't do much of that here). 
+
+[A list of all known recipe steps](https://www.tidymodels.org/find/recipes/)
+
+---
+# What is feature engineering?
+
+First things first: what's a feature? 
+
+I tend to think of a feature as some representation of a predictor that will be used in a model. 
+
+Old-school features: 
+
+ * Interactions
+ * Polynomial expansions/splines
+ * PCA feature extraction
+ 
+"Feature engineering" sounds pretty cool, but let's take a minute to talk about _preprocessing_ data.  
+
+---
+# Two types of preprocessing
+
+&lt;img src="images/fe_venn.svg" width="75%" style="display: block; margin: auto;" /&gt;
+
+---
+# Two types of preprocessing
+
+&lt;img src="images/fe_venn_info.svg" width="75%" style="display: block; margin: auto;" /&gt;
+
+
+---
+# Original column
+
+&lt;img src="images/steve.gif" width="35%" style="display: block; margin: auto;" /&gt;
+
+
+---
+# Features
+
+&lt;img src="images/cap.png" width="75%" style="display: block; margin: auto;" /&gt;
+
+
+(At least that's what we hope the difference looks like.)
+
+---
+# Starting the recipe
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train)
+```
+
+Based on the formula, the function assigns columns to roles of "outcome" or "predictor"
+
+
+---
+# Estimating a transformation of the data
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train) %&gt;%
+* step_YeoJohnson(TSH_reading)
+```
+
+This transformation requires a parameter for estimation and can help with skewed data distributions. 
+
+
+---
+# Imputing missing data
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train) %&gt;%
+  step_YeoJohnson(TSH_reading) %&gt;%
+* step_impute_knn(all_of(miss_cols), neighbors = 5)
+```
+
+Other possible options: `step_impute_bag()`, `step_impute_linear()`, `step_impute_lower()`, `step_impute_mean()`, `step_impute_median()`, `step_impute_mode()`, `step_impute_roll()`
+
+We might want to _optimize_ the number of neighbors to use for imputation. In that case we can tag it using `neighbors = tune()`. 
+
+
+---
+# Create dummy variables
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train) %&gt;%
+  step_YeoJohnson(TSH_reading) %&gt;%
+  step_impute_knn(all_of(miss_cols), neighbors = 5) %&gt;% 
+* step_dummy(all_nominal_predictors())
+```
+
+Recipes do not automatically create indicator variables from categorical (a.k.a. nominal) predictors. 
+
+There are a _lot_ of tools for this in recipers. See [TMwR](https://www.tmwr.org/categorical.html). 
+
+
+---
+# Dealing with the class imbalance
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train) %&gt;%
+  step_YeoJohnson(TSH_reading) %&gt;%
+  step_impute_knn(all_of(miss_cols), neighbors = 5) %&gt;% 
+  step_dummy(all_nominal_predictors()) %&gt;% 
+* step_smote(class, neighbors = 10)
+```
+
+[SMOTE](https://scholar.google.com/scholar?hl=en&amp;as_sdt=0%2C7&amp;q=SMOTE) is a method to synthesize new samples from the classes to enrich the minority class. 
+
+It's not a great solution and is fairly controversial (in statistics, at least). 
+
+Again, we can optimize the number of SMOTE neighbors too. 
+
+The themis package has other tools for imbalances and some models can be used in cost-sensitive learning. 
+
+---
+# Eliminate zero-variance predictors
+
+
+
+```r
+thyr_rec &lt;- 
+  recipe(class ~ ., data = thy_train) %&gt;%
+  step_YeoJohnson(TSH_reading) %&gt;%
+  step_impute_knn(all_of(miss_cols), neighbors = 5) %&gt;% 
+  step_dummy(all_nominal_predictors()) %&gt;% 
+  step_smote(class, neighbors = 10) %&gt;%
+* step_zv(all_predictors())
+```
+
+This removes columns that have a single unique value (i.e., zero variance). 
+
+---
+# A basic logistic regression
+
+
+```r
+ctrl &lt;- control_resamples(save_pred = TRUE)
+lr_res &lt;- 
+  logistic_reg() %&gt;% 
+  fit_resamples(thyr_rec, resamples = thy_folds, control = ctrl)
+
+show_best(lr_res, metric = "roc_auc")
+```
+
+```
+## # A tibble: 1 × 6
+##   .metric .estimator  mean     n std_err .config             
+##   &lt;chr&gt;   &lt;chr&gt;      &lt;dbl&gt; &lt;int&gt;   &lt;dbl&gt; &lt;chr&gt;               
+## 1 roc_auc binary     0.872    10  0.0125 Preprocessor1_Model1
+```
+
+_Both_ the recipe and model are re-estimated 10 times since we are using 10-fold CV. 
+
+If we had used `tune()` for any of the model or recipe parameters, there are a set of tuning functions: `tune_grid()`, `tune_bayes()`, `tune_race_anova()`, and others. 
+
+---
+# Other notes
+
+* These models fits are independent of one another. [Parallel processing](https://www.tmwr.org/resampling.html#parallel) can be used to significantly speed up the training process. 
+* The individual models can [be saved](https://www.tmwr.org/resampling.html#extract) so you can look at variation in the model parameters or recipes steps. 
+* If you are interested in a [validation set](https://www.tmwr.org/resampling.html#validation), tidymodels considers that a single resample of the data. Everything else in this chapter works the same. 
+* Formulas can also be used to specify the model terms.
+
+
+---
+# Resampled ROC curve
+
+.pull-left[
+
+```r
+lr_res %&gt;% 
+  collect_predictions() %&gt;% 
+  roc_curve(class, .pred_sick) %&gt;% 
+  autoplot()
+```
+]
+.pull-right[
+&lt;img src="index_files/figure-html/roc-plot-1.svg" style="display: block; margin: auto;" /&gt;
+]
+
+
+
+---
+# tidymodels
+
+There's a lot more to talk about with tidymodels, but this example is emblematic of the power and security of the framework. 
+
+We'll finish up with [David Robinson](http://varianceexplained.org/r/sliced-ml/):
+
+&gt; Some of the resistance I’ve seen to tidymodels comes from a place of “This makes it too easy- you’re not thinking carefully about what the code is doing!” But I think this is getting it backwards. By removing the burden of writing procedural logic, I get to focus on scientific and statistical questions about my data and model.
+
+
+
+---
+
+# Thanks
+
+Thanks for the invitation to speak today!
+
+The tidymodels team: Davis Vaughan, Julia Silge, Hanna Frick, and Emil Hvitfeldt.
+
+Special thanks for the other folks who contributed so much to tidymodels: Edgar Ruiz, Alison Hill, Desirée De Leon, Simon Couch, Alex Hayes, Mine Cetinkaya-Rundel, and the tidyverse team.
+
+These slides were made with the [`xaringan`](https://bookdown.org/yihui/rmarkdown/xaringan.html) package and styled by Alison Hill. 
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"slideNumberFormat": "<div class=\"progress-bar-container\">\n  <div class=\"progress-bar\" style=\"width: calc(%current% / %total% * 100%);\">\n  </div>\n</div>\n",
+"highlightLanguage": ["r", "css", "yaml"],
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
